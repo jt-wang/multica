@@ -52,6 +52,8 @@ services:
       CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN:-}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      MULTICA_REGISTRATION_MODE: ${MULTICA_REGISTRATION_MODE:-open}
+      MULTICA_ALLOWED_DOMAINS: ${MULTICA_ALLOWED_DOMAINS:-}
     depends_on:
       postgres:
         condition: service_healthy
