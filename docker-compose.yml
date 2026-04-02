@@ -1,16 +1,97 @@
 name: multica
 
 services:
+  # ── PostgreSQL + pgvector ──────────────────────────────────────────────────
+  # Always runs (dev + self-host)
   postgres:
     image: pgvector/pgvector:pg17
     environment:
-      POSTGRES_DB: multica
+      POSTGRES_DB: ${POSTGRES_DB:-multica}
       POSTGRES_USER: ${POSTGRES_USER:-multica}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-multica}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-multica} -d ${POSTGRES_DB:-multica}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Database migrations (run once, then exit) ─────────────────────────────
+  migrate:
+    profiles: [self-host]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["./migrate", "up"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-multica}:${POSTGRES_PASSWORD:-multica}@postgres:5432/${POSTGRES_DB:-multica}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Go API server ─────────────────────────────────────────────────────────
+  server:
+    profiles: [self-host]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-multica}:${POSTGRES_PASSWORD:-multica}@postgres:5432/${POSTGRES_DB:-multica}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET}
+      MULTICA_APP_URL: ${MULTICA_APP_URL}
+      MULTICA_SERVER_URL: ws://server:8080/ws
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@multica.ai}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      CLOUDFRONT_KEY_PAIR_ID: ${CLOUDFRONT_KEY_PAIR_ID:-}
+      CLOUDFRONT_PRIVATE_KEY: ${CLOUDFRONT_PRIVATE_KEY:-}
+      CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN:-}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      MULTICA_REGISTRATION_MODE: ${MULTICA_REGISTRATION_MODE:-open}
+      MULTICA_ALLOWED_DOMAINS: ${MULTICA_ALLOWED_DOMAINS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ── Next.js frontend ──────────────────────────────────────────────────────
+  web:
+    profiles: [self-host]
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL}
+    environment:
+      REMOTE_API_URL: http://server:8080
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  # ── Cloudflare Tunnel (optional) ──────────────────────────────────────────
+  tunnel:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - server
+      - web
+    restart: unless-stopped
 
 volumes:
   pgdata:
