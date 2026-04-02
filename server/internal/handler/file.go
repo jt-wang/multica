@@ -51,7 +51,7 @@ func (h *Handler) attachmentToResponse(a db.Attachment) AttachmentResponse {
 		CreatedAt:    a.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if h.CFSigner != nil {
-		resp.DownloadURL = h.CFSigner.SignedURL(a.Url, time.Now().Add(5*time.Minute))
+		resp.DownloadURL = h.CFSigner.SignedURL(a.Url, time.Now().Add(30*time.Minute))
 	}
 	if a.IssueID.Valid {
 		s := uuidToString(a.IssueID)
@@ -215,6 +215,30 @@ func (h *Handler) ListAttachments(w http.ResponseWriter, r *http.Request) {
 		resp[i] = h.attachmentToResponse(a)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ---------------------------------------------------------------------------
+// GetAttachmentByID — GET /api/attachments/{id}
+// ---------------------------------------------------------------------------
+
+func (h *Handler) GetAttachmentByID(w http.ResponseWriter, r *http.Request) {
+	attachmentID := chi.URLParam(r, "id")
+	workspaceID := resolveWorkspaceID(r)
+	if workspaceID == "" {
+		writeError(w, http.StatusBadRequest, "workspace_id is required")
+		return
+	}
+
+	att, err := h.Queries.GetAttachment(r.Context(), db.GetAttachmentParams{
+		ID:          parseUUID(attachmentID),
+		WorkspaceID: parseUUID(workspaceID),
+	})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "attachment not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, h.attachmentToResponse(att))
 }
 
 // ---------------------------------------------------------------------------

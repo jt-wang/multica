@@ -51,7 +51,8 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 	b.WriteString("- `multica workspace get --output json` — Get workspace details and context\n")
 	b.WriteString("- `multica agent list --output json` — List agents in workspace\n")
 	b.WriteString("- `multica issue runs <issue-id> --output json` — List all execution runs for an issue (status, timestamps, errors)\n")
-	b.WriteString("- `multica issue run-messages <task-id> [--since <seq>] --output json` — List messages for a specific execution run (supports incremental fetch)\n\n")
+	b.WriteString("- `multica issue run-messages <task-id> [--since <seq>] --output json` — List messages for a specific execution run (supports incremental fetch)\n")
+	b.WriteString("- `multica attachment download <id> [-o <dir>]` — Download an attachment file locally by ID\n\n")
 
 	b.WriteString("### Write\n")
 	b.WriteString("- `multica issue comment add <issue-id> --content \"...\" [--parent <comment-id>]` — Post a comment (use --parent to reply to a specific comment)\n")
@@ -133,6 +134,13 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 	b.WriteString("- **Member**: `[@Name](mention://member/<user-id>)` — renders as a styled mention and sends a notification\n")
 	b.WriteString("- **Agent**: `[@Name](mention://agent/<agent-id>)` — renders as a styled mention\n\n")
 	b.WriteString("Use `multica issue list --output json` to look up issue IDs, and `multica workspace members --output json` for member IDs.\n\n")
+
+	b.WriteString("## Attachments\n\n")
+	b.WriteString("Issues and comments may include file attachments (images, documents, etc.).\n")
+	b.WriteString("Use the download command to fetch attachment files locally:\n\n")
+	b.WriteString("```\nmultica attachment download <attachment-id>\n```\n\n")
+	b.WriteString("This downloads the file to the current directory and prints the local path. Use `-o <dir>` to save elsewhere.\n")
+	b.WriteString("After downloading, you can read the file directly (e.g. view an image, read a document).\n\n")
 
 	b.WriteString("## Output\n\n")
 	b.WriteString("Keep comments concise and natural — state the outcome, not the process.\n")
