@@ -243,8 +243,8 @@ const createAgent = `-- name: CreateAgent :one
 INSERT INTO agent (
     workspace_id, name, description, avatar_url, runtime_mode,
     runtime_config, runtime_id, visibility, max_concurrent_tasks, owner_id,
-    tools, triggers, instructions
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    tools, triggers, instructions, approval_required
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, approval_required
 `
 
@@ -262,6 +262,7 @@ type CreateAgentParams struct {
 	Tools              []byte      `json:"tools"`
 	Triggers           []byte      `json:"triggers"`
 	Instructions       string      `json:"instructions"`
+	ApprovalRequired   bool        `json:"approval_required"`
 }
 
 func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent, error) {
@@ -279,6 +280,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		arg.Tools,
 		arg.Triggers,
 		arg.Instructions,
+		arg.ApprovalRequired,
 	)
 	var i Agent
 	err := row.Scan(

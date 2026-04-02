@@ -30,10 +30,11 @@ func NewTaskService(q *db.Queries, hub *realtime.Hub, bus *events.Bus) *TaskServ
 	return &TaskService{Queries: q, Hub: hub, Bus: bus}
 }
 
-// EnqueueTaskForIssue creates a queued task for an agent-assigned issue.
-// No context snapshot is stored — the agent fetches all data it needs at
-// runtime via the multica CLI.
-func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, triggerCommentID ...pgtype.UUID) (db.AgentTaskQueue, error) {
+// EnqueueTaskForIssue creates a task for an agent-assigned issue.
+// If the agent has approval_required=true and the requester is not the runtime
+// owner, the task enters "pending_approval" instead of "queued".
+// The requestedBy parameter identifies who triggered the task (for approval logic).
+func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, requestedBy string, triggerCommentID ...pgtype.UUID) (db.AgentTaskQueue, error) {
 	if !issue.AssigneeID.Valid {
 		slog.Error("task enqueue failed", "issue_id", util.UUIDToString(issue.ID), "error", "issue has no assignee")
 		return db.AgentTaskQueue{}, fmt.Errorf("issue has no assignee")
@@ -58,21 +59,88 @@ func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, t
 		commentID = triggerCommentID[0]
 	}
 
+	status := "queued"
+	if agent.ApprovalRequired && requestedBy != "" {
+		runtimeOwner, err := s.Queries.GetAgentRuntimeOwner(ctx, agent.RuntimeID)
+		if err == nil && runtimeOwner.Valid && util.UUIDToString(runtimeOwner) != requestedBy {
+			status = "pending_approval"
+		}
+	}
+
+	var reqBy pgtype.UUID
+	if requestedBy != "" {
+		reqBy = util.ParseUUID(requestedBy)
+	}
+
 	task, err := s.Queries.CreateAgentTask(ctx, db.CreateAgentTaskParams{
 		AgentID:          issue.AssigneeID,
 		RuntimeID:        agent.RuntimeID,
 		IssueID:          issue.ID,
-		Status:           "queued",
+		Status:           status,
 		Priority:         priorityToInt(issue.Priority),
 		TriggerCommentID: commentID,
+		RequestedBy:      reqBy,
 	})
 	if err != nil {
 		slog.Error("task enqueue failed", "issue_id", util.UUIDToString(issue.ID), "error", err)
 		return db.AgentTaskQueue{}, fmt.Errorf("create task: %w", err)
 	}
 
-	slog.Info("task enqueued", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(issue.AssigneeID))
+	slog.Info("task enqueued", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(issue.ID), "status", status, "agent_id", util.UUIDToString(issue.AssigneeID))
 	return task, nil
+}
+
+// ApproveTask transitions a pending_approval task to queued.
+// Only the runtime owner can approve.
+func (s *TaskService) ApproveTask(ctx context.Context, taskID pgtype.UUID, approverUserID string) (*db.AgentTaskQueue, error) {
+	task, err := s.Queries.GetAgentTask(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("task not found: %w", err)
+	}
+	if task.Status != "pending_approval" {
+		return nil, fmt.Errorf("task is not pending approval")
+	}
+
+	// Verify approver is the runtime owner
+	runtimeOwner, err := s.Queries.GetAgentRuntimeOwner(ctx, task.RuntimeID)
+	if err != nil || !runtimeOwner.Valid || util.UUIDToString(runtimeOwner) != approverUserID {
+		return nil, fmt.Errorf("only the runtime owner can approve tasks")
+	}
+
+	approved, err := s.Queries.ApproveAgentTask(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("approve task: %w", err)
+	}
+
+	slog.Info("task approved", "task_id", util.UUIDToString(approved.ID), "approver", approverUserID)
+	s.broadcastTaskEvent(ctx, protocol.EventTaskApproved, approved)
+	return &approved, nil
+}
+
+// RejectTask cancels a pending_approval task.
+// Only the runtime owner can reject.
+func (s *TaskService) RejectTask(ctx context.Context, taskID pgtype.UUID, rejecterUserID string) (*db.AgentTaskQueue, error) {
+	task, err := s.Queries.GetAgentTask(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("task not found: %w", err)
+	}
+	if task.Status != "pending_approval" {
+		return nil, fmt.Errorf("task is not pending approval")
+	}
+
+	runtimeOwner, err := s.Queries.GetAgentRuntimeOwner(ctx, task.RuntimeID)
+	if err != nil || !runtimeOwner.Valid || util.UUIDToString(runtimeOwner) != rejecterUserID {
+		return nil, fmt.Errorf("only the runtime owner can reject tasks")
+	}
+
+	rejected, err := s.Queries.RejectAgentTask(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("reject task: %w", err)
+	}
+
+	slog.Info("task rejected", "task_id", util.UUIDToString(rejected.ID), "rejecter", rejecterUserID)
+	s.broadcastTaskEvent(ctx, protocol.EventTaskRejected, rejected)
+	return &rejected, nil
 }
 
 // EnqueueTaskForMention creates a queued task for a mentioned agent on an issue.
