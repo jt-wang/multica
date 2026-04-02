@@ -202,6 +202,32 @@ func (h *Handler) findOrCreateUser(ctx context.Context, email string) (db.User, 
 	return user, nil
 }
 
+func registrationMode() string {
+	mode := os.Getenv("MULTICA_REGISTRATION_MODE")
+	if mode == "" {
+		return "open"
+	}
+	return mode
+}
+
+func isEmailDomainAllowed(email string) bool {
+	domains := os.Getenv("MULTICA_ALLOWED_DOMAINS")
+	if domains == "" {
+		return true
+	}
+	at := strings.Index(email, "@")
+	if at < 0 {
+		return false
+	}
+	emailDomain := strings.ToLower(email[at+1:])
+	for _, d := range strings.Split(domains, ",") {
+		if strings.ToLower(strings.TrimSpace(d)) == emailDomain {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 	var req SendCodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -212,6 +238,16 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if email == "" {
 		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	if registrationMode() == "closed" {
+		writeError(w, http.StatusForbidden, "registration is closed")
+		return
+	}
+
+	if !isEmailDomainAllowed(email) {
+		writeError(w, http.StatusForbidden, "email domain is not allowed")
 		return
 	}
 
@@ -282,15 +318,36 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mode := registrationMode()
+
+	// In invite_only mode, check if user already exists and has at least one workspace.
+	// If not, reject — they must be pre-added as a member by an admin.
+	if mode == "invite_only" {
+		existingUser, lookupErr := h.Queries.GetUserByEmail(r.Context(), email)
+		if lookupErr != nil {
+			writeError(w, http.StatusForbidden, "registration is invite-only; ask a workspace admin to add you first")
+			return
+		}
+		workspaces, wsErr := h.Queries.ListWorkspaces(r.Context(), existingUser.ID)
+		if wsErr != nil || len(workspaces) == 0 {
+			writeError(w, http.StatusForbidden, "registration is invite-only; ask a workspace admin to add you first")
+			return
+		}
+	}
+
 	user, err := h.findOrCreateUser(r.Context(), email)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create user")
 		return
 	}
 
-	if err := h.ensureUserWorkspace(r.Context(), user); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to provision workspace")
-		return
+	// In invite_only mode, skip auto-workspace creation — the user is expected
+	// to already belong to a workspace they were invited to.
+	if mode != "invite_only" {
+		if err := h.ensureUserWorkspace(r.Context(), user); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to provision workspace")
+			return
+		}
 	}
 
 	tokenString, err := h.issueJWT(user)
