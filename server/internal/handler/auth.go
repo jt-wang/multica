@@ -241,7 +241,9 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if registrationMode() == "closed" {
+	mode := registrationMode()
+
+	if mode == "closed" {
 		writeError(w, http.StatusForbidden, "registration is closed")
 		return
 	}
@@ -249,6 +251,20 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 	if !isEmailDomainAllowed(email) {
 		writeError(w, http.StatusForbidden, "email domain is not allowed")
 		return
+	}
+
+	// In invite_only mode, reject upfront if user doesn't exist or has no workspace
+	if mode == "invite_only" {
+		user, err := h.Queries.GetUserByEmail(r.Context(), email)
+		if err != nil {
+			writeError(w, http.StatusForbidden, "registration is invite-only; ask a workspace admin to add you first")
+			return
+		}
+		workspaces, err := h.Queries.ListWorkspaces(r.Context(), user.ID)
+		if err != nil || len(workspaces) == 0 {
+			writeError(w, http.StatusForbidden, "registration is invite-only; ask a workspace admin to add you first")
+			return
+		}
 	}
 
 	// Rate limit: max 1 code per 10 seconds per email

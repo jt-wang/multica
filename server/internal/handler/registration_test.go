@@ -72,31 +72,15 @@ func TestRegistrationModeInviteOnly(t *testing.T) {
 	os.Setenv("MULTICA_REGISTRATION_MODE", "invite_only")
 	defer os.Unsetenv("MULTICA_REGISTRATION_MODE")
 
-	// Send code should succeed (we don't block at send-code stage)
+	// Send code itself should be rejected — no email wasted
 	w := httptest.NewRecorder()
 	var buf bytes.Buffer
 	json.NewEncoder(&buf).Encode(map[string]string{"email": email})
 	req := httptest.NewRequest("POST", "/auth/send-code", &buf)
 	req.Header.Set("Content-Type", "application/json")
 	testHandler.SendCode(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("SendCode: expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	dbCode, err := testHandler.Queries.GetLatestVerificationCode(ctx, email)
-	if err != nil {
-		t.Fatalf("GetLatestVerificationCode: %v", err)
-	}
-
-	// VerifyCode should fail because user has no workspace membership
-	w = httptest.NewRecorder()
-	buf.Reset()
-	json.NewEncoder(&buf).Encode(map[string]string{"email": email, "code": dbCode.Code})
-	req = httptest.NewRequest("POST", "/auth/verify-code", &buf)
-	req.Header.Set("Content-Type", "application/json")
-	testHandler.VerifyCode(w, req)
 	if w.Code != http.StatusForbidden {
-		t.Fatalf("VerifyCode invite_only (new user): expected 403, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("SendCode invite_only (new user): expected 403, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
