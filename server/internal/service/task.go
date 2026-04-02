@@ -87,6 +87,42 @@ func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, r
 	}
 
 	slog.Info("task enqueued", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(issue.ID), "status", status, "agent_id", util.UUIDToString(issue.AssigneeID))
+
+	// Notify runtime owner when approval is needed
+	if status == "pending_approval" {
+		runtimeOwner, _ := s.Queries.GetAgentRuntimeOwner(ctx, agent.RuntimeID)
+		if runtimeOwner.Valid {
+			wsID := util.UUIDToString(issue.WorkspaceID)
+			ownerID := util.UUIDToString(runtimeOwner)
+			details, _ := json.Marshal(map[string]string{
+				"task_id":  util.UUIDToString(task.ID),
+				"agent_id": util.UUIDToString(agent.ID),
+			})
+			inbox, err := s.Queries.CreateInboxItem(ctx, db.CreateInboxItemParams{
+				WorkspaceID:   issue.WorkspaceID,
+				RecipientType: "member",
+				RecipientID:   runtimeOwner,
+				Type:          "task_approval_required",
+				Severity:      "action_required",
+				IssueID:       issue.ID,
+				Title:         "Task approval required: " + issue.Title,
+				Body:          pgtype.Text{String: "A teammate assigned a task to your agent. Approve or reject it.", Valid: true},
+				ActorType:     pgtype.Text{String: "member", Valid: true},
+				ActorID:       reqBy,
+				Details:       details,
+			})
+			if err == nil {
+				s.Bus.Publish(events.Event{
+					Type:        protocol.EventInboxNew,
+					WorkspaceID: wsID,
+					ActorType:   "system",
+					ActorID:     ownerID,
+					Payload:     map[string]any{"inbox_item_id": util.UUIDToString(inbox.ID), "recipient_id": ownerID},
+				})
+			}
+		}
+	}
+
 	return task, nil
 }
 
