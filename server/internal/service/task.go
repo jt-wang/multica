@@ -62,6 +62,7 @@ func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, t
 		AgentID:          issue.AssigneeID,
 		RuntimeID:        agent.RuntimeID,
 		IssueID:          issue.ID,
+		Status:           "queued",
 		Priority:         priorityToInt(issue.Priority),
 		TriggerCommentID: commentID,
 	})
@@ -96,6 +97,7 @@ func (s *TaskService) EnqueueTaskForMention(ctx context.Context, issue db.Issue,
 		AgentID:          agentID,
 		RuntimeID:        agent.RuntimeID,
 		IssueID:          issue.ID,
+		Status:           "queued",
 		Priority:         priorityToInt(issue.Priority),
 		TriggerCommentID: triggerCommentID,
 	})
