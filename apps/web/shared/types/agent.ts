@@ -106,6 +106,7 @@ export interface UpdateAgentRequest {
   visibility?: AgentVisibility;
   status?: AgentStatus;
   max_concurrent_tasks?: number;
+  approval_required?: boolean;
   tools?: AgentTool[];
   triggers?: AgentTrigger[];
 }

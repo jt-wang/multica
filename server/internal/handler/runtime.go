@@ -217,3 +217,50 @@ func (h *Handler) ListAgentRuntimes(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, resp)
 }
+
+type UpdateRuntimeRequest struct {
+	Visibility *string `json:"visibility"`
+}
+
+func (h *Handler) UpdateAgentRuntime(w http.ResponseWriter, r *http.Request) {
+	runtimeID := chi.URLParam(r, "runtimeId")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	runtime, err := h.Queries.GetAgentRuntime(r.Context(), parseUUID(runtimeID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "runtime not found")
+		return
+	}
+
+	// Only the runtime owner can update
+	if uuidToString(runtime.OwnerID) != userID {
+		writeError(w, http.StatusForbidden, "only the runtime owner can update this runtime")
+		return
+	}
+
+	var req UpdateRuntimeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Visibility != nil {
+		if *req.Visibility != "workspace" && *req.Visibility != "private" {
+			writeError(w, http.StatusBadRequest, "visibility must be 'workspace' or 'private'")
+			return
+		}
+		runtime, err = h.Queries.UpdateAgentRuntimeVisibility(r.Context(), db.UpdateAgentRuntimeVisibilityParams{
+			ID:         parseUUID(runtimeID),
+			Visibility: *req.Visibility,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update runtime")
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, runtimeToResponse(runtime))
+}

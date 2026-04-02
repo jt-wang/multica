@@ -337,6 +337,7 @@ type UpdateAgentRequest struct {
 	Visibility         *string `json:"visibility"`
 	Status             *string `json:"status"`
 	MaxConcurrentTasks *int32  `json:"max_concurrent_tasks"`
+	ApprovalRequired   *bool   `json:"approval_required"`
 	Tools              any     `json:"tools"`
 	Triggers           any     `json:"triggers"`
 }
@@ -422,6 +423,9 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	if req.Triggers != nil {
 		triggers, _ := json.Marshal(req.Triggers)
 		params.Triggers = triggers
+	}
+	if req.ApprovalRequired != nil {
+		params.ApprovalRequired = pgtype.Bool{Bool: *req.ApprovalRequired, Valid: true}
 	}
 
 	agent, err := h.Queries.UpdateAgent(r.Context(), params)

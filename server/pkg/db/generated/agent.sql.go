@@ -993,6 +993,7 @@ UPDATE agent SET
     tools = COALESCE($11, tools),
     triggers = COALESCE($12, triggers),
     instructions = COALESCE($13, instructions),
+    approval_required = COALESCE($14, approval_required),
     updated_at = now()
 WHERE id = $1
 RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, approval_required
@@ -1012,6 +1013,7 @@ type UpdateAgentParams struct {
 	Tools              []byte      `json:"tools"`
 	Triggers           []byte      `json:"triggers"`
 	Instructions       pgtype.Text `json:"instructions"`
+	ApprovalRequired   pgtype.Bool `json:"approval_required"`
 }
 
 func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Agent, error) {
@@ -1029,6 +1031,7 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Agent
 		arg.Tools,
 		arg.Triggers,
 		arg.Instructions,
+		arg.ApprovalRequired,
 	)
 	var i Agent
 	err := row.Scan(

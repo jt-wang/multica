@@ -38,6 +38,7 @@ UPDATE agent SET
     tools = COALESCE(sqlc.narg('tools'), tools),
     triggers = COALESCE(sqlc.narg('triggers'), triggers),
     instructions = COALESCE(sqlc.narg('instructions'), instructions),
+    approval_required = COALESCE(sqlc.narg('approval_required'), approval_required),
     updated_at = now()
 WHERE id = $1
 RETURNING *;

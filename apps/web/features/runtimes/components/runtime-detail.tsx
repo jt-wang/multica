@@ -1,9 +1,15 @@
+import { useState } from "react";
 import type { AgentRuntime } from "@/shared/types";
 import { formatLastSeen } from "../utils";
 import { RuntimeModeIcon, StatusBadge, InfoField } from "./shared";
 import { PingSection } from "./ping-section";
 import { UpdateSection } from "./update-section";
 import { UsageSection } from "./usage-section";
+import { useAuthStore } from "@/features/auth";
+import { Globe, Lock } from "lucide-react";
+import { api } from "@/shared/api";
+import { toast } from "sonner";
+import { useRuntimeStore } from "../store";
 
 function getCliVersion(metadata: Record<string, unknown>): string | null {
   if (

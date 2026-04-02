@@ -233,6 +233,40 @@ func (q *Queries) UpdateAgentRuntimeHeartbeat(ctx context.Context, id pgtype.UUI
 	return i, err
 }
 
+const updateAgentRuntimeVisibility = `-- name: UpdateAgentRuntimeVisibility :one
+UPDATE agent_runtime
+SET visibility = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, visibility
+`
+
+type UpdateAgentRuntimeVisibilityParams struct {
+	ID         pgtype.UUID `json:"id"`
+	Visibility string      `json:"visibility"`
+}
+
+func (q *Queries) UpdateAgentRuntimeVisibility(ctx context.Context, arg UpdateAgentRuntimeVisibilityParams) (AgentRuntime, error) {
+	row := q.db.QueryRow(ctx, updateAgentRuntimeVisibility, arg.ID, arg.Visibility)
+	var i AgentRuntime
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.DaemonID,
+		&i.Name,
+		&i.RuntimeMode,
+		&i.Provider,
+		&i.Status,
+		&i.DeviceInfo,
+		&i.Metadata,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OwnerID,
+		&i.Visibility,
+	)
+	return i, err
+}
+
 const upsertAgentRuntime = `-- name: UpsertAgentRuntime :one
 INSERT INTO agent_runtime (
     workspace_id,

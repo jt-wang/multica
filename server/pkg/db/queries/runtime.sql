@@ -39,6 +39,12 @@ RETURNING *;
 -- name: GetAgentRuntimeOwner :one
 SELECT owner_id FROM agent_runtime WHERE id = $1;
 
+-- name: UpdateAgentRuntimeVisibility :one
+UPDATE agent_runtime
+SET visibility = $2, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: UpdateAgentRuntimeHeartbeat :one
 UPDATE agent_runtime
 SET status = 'online', last_seen_at = now(), updated_at = now()
